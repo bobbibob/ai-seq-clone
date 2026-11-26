@@ -1,0 +1,6 @@
+id=ai-seq-clone
+name=AI Seq Clone
+version=1.0
+versionCode=1
+author=Auto
+description=Automate sequential ID clone creation with deletion of all old clones
