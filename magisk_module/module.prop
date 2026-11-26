@@ -1,0 +1,6 @@
+id=ai-seq-clone
+name=AI Sequential Clone
+version=3.0
+versionCode=300
+author=Auto
+description=Works with LOCKED screen via Accessibility Service. Auto-creates sequential clones and deletes old ones.
