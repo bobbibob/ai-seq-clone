@@ -6,7 +6,7 @@ mkdir -p "$DATA"
 case "${1:-status}" in
   on)
     touch "$DATA/enabled"
-    nohup sh "$MODDIR/service.sh" >> "$DATA/service.log" 2>&1 </dev/null &
+    setsid nohup sh "$MODDIR/service.sh" >> "$DATA/service.log" 2>&1 </dev/null &
     ;;
   off)
     if [ -f "$DATA/enabled" ]; then mv "$DATA/enabled" "$DATA/disabled"; fi

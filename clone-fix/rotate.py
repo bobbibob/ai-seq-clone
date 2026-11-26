@@ -182,6 +182,7 @@ def main():
     parser.add_argument('--quotas-only', action='store_true', help='Read both quotas without rotating')
     parser.add_argument('--execute', action='store_true', help='Enable actual rotation (NOT used during repair)')
     parser.add_argument('--watch', action='store_true')
+    parser.add_argument('--resume', action='store_true', help='Open the sole current clone once if no generator is running')
     parser.add_argument('--interval', type=int, default=30)
     args = parser.parse_args()
     if args.interval < 10:
@@ -205,6 +206,7 @@ def main():
     with (DATA / 'controller.lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         (DATA / 'controller.pid').write_text(str(os.getpid()))
+        resume_pending = args.resume
         while True:
             try:
                 if not (DATA / 'enabled').exists():
@@ -212,6 +214,11 @@ def main():
                         return
                     time.sleep(args.interval)
                     continue
+                if resume_pending:
+                    resume_pending = False
+                    running = subprocess.run(['/system/bin/pidof', 'com.technosub.unlimitedaiimagen'], capture_output=True)
+                    if running.returncode != 0 and len(clones()) == 1:
+                        launch('video')
                 pending = DATA / 'pending-launch.json'
                 if pending.exists():
                     state = json.loads(pending.read_text())
