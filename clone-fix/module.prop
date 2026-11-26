@@ -1,0 +1,6 @@
+id=noa_clone_bridge_ids_candidate
+name=NOA Persistent Clone IDs (disabled candidate)
+version=0.4.0-candidate
+versionCode=5
+author=NOA
+description=Separate candidate bridge with durable daily internal IDs. Disabled by default; no automatic clone operations.

@@ -1,0 +1,83 @@
+name: Build persistent clone ID candidate
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['build/clone-id-*']
+    paths: ['clone-fix/**', '.github/workflows/build-clone-fix.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Controller guard tests
+        run: python3 -B -m unittest discover -s clone-fix/tests -p 'test_*.py' -v
+      - name: Compile Java and exercise persistent journal
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          PLATFORM="$SDK/platforms/android-35/android.jar"
+          test -f "$PLATFORM"
+          mkdir -p build/classes build/tests build/dex
+          javac -source 8 -target 8 -classpath "$PLATFORM" -d build/classes clone-fix/src/noa/bridge/*.java
+          javac -source 8 -target 8 -classpath build/classes -d build/tests clone-fix/tests/DailyIdsTest.java
+          java -cp build/classes:build/tests DailyIdsTest
+          BT="$SDK/build-tools/35.0.0"
+          test -x "$BT/d8"
+          "$BT/d8" --min-api 26 --lib "$PLATFORM" --output build/dex build/classes/noa/bridge/*.class
+          xxd -i -n bridge_dex build/dex/classes.dex > build/bridge_dex.h
+      - name: Fetch pinned Zygisk API header
+        run: |
+          curl --fail --location --retry 3 \
+            https://raw.githubusercontent.com/topjohnwu/zygisk-module-sample/8ce26128f81baaed0b969aaf7f52f886b61af4ab/module/jni/zygisk.hpp \
+            -o build/zygisk.hpp
+      - name: Build ARM64 transport
+        shell: bash
+        run: |
+          set -euo pipefail
+          NDK="${ANDROID_NDK_HOME:-${ANDROID_NDK_LATEST_HOME:-}}"
+          test -n "$NDK"
+          TOOL="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          CXX="$TOOL/aarch64-linux-android26-clang++"
+          "$CXX" -std=c++17 -O2 -Wall -Wextra -fPIC -shared -static-libstdc++ \
+            -fvisibility=hidden -fvisibility-inlines-hidden -Ibuild \
+            clone-fix/src/main.cpp -llog -o build/arm64-v8a.so
+          "$CXX" -std=c++17 -O2 -Wall -Wextra -static-libstdc++ \
+            clone-fix/src/client.cpp -o build/noa-clonectl
+          "$TOOL/llvm-readelf" -d build/arm64-v8a.so | tee build/dependencies.txt
+          if grep -q 'libc++_shared.so' build/dependencies.txt; then exit 1; fi
+          "$TOOL/llvm-readelf" -Ws build/arm64-v8a.so | grep zygisk_module_entry
+          "$TOOL/llvm-readelf" -h build/noa-clonectl | grep AArch64
+      - name: Package disabled-by-default candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/module/zygisk build/module/bin build/artifacts
+          cp clone-fix/module.prop clone-fix/customize.sh clone-fix/service.sh build/module/
+          cp clone-fix/README.md build/module/README.md
+          cp clone-fix/rotate.py build/module/rotate.py
+          cp build/arm64-v8a.so build/module/zygisk/arm64-v8a.so
+          cp build/noa-clonectl build/module/bin/noa-clonectl
+          chmod 755 build/module/bin/noa-clonectl build/module/service.sh build/module/customize.sh
+          touch build/module/disable
+          (cd build/module && zip -r ../artifacts/noa-clone-ids-candidate.zip .)
+          cp build/dependencies.txt build/artifacts/
+          git rev-parse HEAD > build/artifacts/SOURCE_COMMIT.txt
+          (cd build/artifacts && sha256sum noa-clone-ids-candidate.zip > SHA256SUMS)
+          unzip -t build/artifacts/noa-clone-ids-candidate.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: noa-clone-ids-candidate-arm64
+          path: build/artifacts/
+          if-no-files-found: error
+          retention-days: 14
