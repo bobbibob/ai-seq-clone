@@ -124,6 +124,13 @@ def launch(kind):
     power = run(['/system/bin/dumpsys', 'power'])
     was_asleep = 'mWakefulness=Asleep' in power or 'mWakefulness=Dozing' in power
     try:
+        # Super Clone can retain a dead virtual stub after an uninstall. Its
+        # AppStartActivity otherwise waits forever instead of starting the new ID.
+        # Preserve :x (the package manager/bridge), and discard only app stubs.
+        for pattern in ('^com[.]polestar[.]super[.]clone:p', '^com[.]technosub[.]unlimitedaiimagen'):
+            stopped = subprocess.run(['/system/bin/pkill', '-f', pattern], capture_output=True, timeout=10)
+            if stopped.returncode not in (0, 1):
+                raise RuntimeError('Unable to stop stale virtual app process')
         # Recreate HomeActivity to discard tiles for a clone just deleted by rotation.
         run(['/system/bin/input', 'keyevent', 'KEYCODE_WAKEUP'])
         run(['/system/bin/wm', 'dismiss-keyguard'])
