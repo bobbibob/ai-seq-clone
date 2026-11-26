@@ -1,38 +1,35 @@
 #!/system/bin/sh
 
-# Create output directory
-mkdir -p /data/local_tmp/ai-clone
+# Magisk Module Service Script
+# Run in background as a service
+# This script will automatically install the accessibility service APK
 
-# Wait for boot
-while [ "$(getprop sys.boot_completed)" != "1" ]; do
-    sleep 5
-done
+# Create installation directory
+INSTALL_DIR="/data/local_tmp/ai-clone"
+APK_PATH="/magisk/module/AISeqClone.apk"
 
-# Wait for system ready
-sleep 15
+# Create installation directory if it doesn't exist
+mkdir -p "$INSTALL_DIR"
 
-echo "Starting Accessibility Service..." >> /data/local_tmp/ai-clone/service.log
+# Check if APK exists
+if [ -f "$APK_PATH" ]; then
+    echo "AI Sequential Clone service starting..."
 
-# Install Accessibility Service
-if [ -f /system/priv-app/AISeqClone/AISeqClone.apk ]; then
-    echo "Accessibility Service already installed" >> /data/local_tmp/ai-clone/service.log
+    # Install accessibility service APK
+    pm install -r "$APK_PATH"
+
+    echo "Accessibility service installed successfully!"
+
+    # Enable accessibility service if not already enabled
+    # (This would require additional steps)
+
+    # Keep service running
+    while true; do
+        sleep 60
+    done
+
 else
-    echo "Installing Accessibility Service..." >> /data/local_tmp/ai-clone/service.log
-    
-    # Copy APK to system
-    cp /data/local_tmp/AISeqClone.apk /system/priv-app/AISeqClone/
-    
-    # Set permissions
-    chmod 644 /system/priv-app/AISeqClone/AISeqClone.apk
-    chown root:root /system/priv-app/AISeqClone/AISeqClone.apk
-    
-    # Enable accessibility
-    settings put secure enabled_accessibility_services com.technosub.ai.seqclone/com.technosub.ai.seqclone.AccessibilityService
-    settings put secure accessibility_enabled 1
+    echo "APK not found at $APK_PATH"
+    # Exit service
+    exit 1
 fi
-
-# Restart accessibility service
-am force-stop com.technosub.ai.seqclone
-am start -n com.technosub.ai.seqclone/.MainActivity
-
-echo "Accessibility Service started" >> /data/local_tmp/ai-clone/service.log

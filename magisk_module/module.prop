@@ -1,6 +1,6 @@
-id=ai-seq-clone
+id=com.technosub.aiseqclone
 name=AI Sequential Clone
 version=3.0
-versionCode=300
-author=Auto
-description=Works with LOCKED screen via Accessibility Service. Auto-creates sequential clones and deletes old ones.
+author=technosub
+description=Automates AI Image Generator clone management with sequential IDs and daily limit reading
+versionCode=30
