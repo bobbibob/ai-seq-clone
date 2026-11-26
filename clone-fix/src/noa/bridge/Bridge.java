@@ -116,6 +116,23 @@ public final class Bridge {
         }
         throw new IllegalStateException("Virtual user allocation did not reach " + id);
     }
+    static void removeHiddenTargetInstalls(Context ctx, int keep) throws Exception {
+        Object core = get(cls("com.polestar.clone.client.core.VirtualCore"), "p");
+        Object manager = invoke(core, "k");
+        Set<Integer> records = new HashSet<>();
+        for (Object row : targets(ctx)) records.add(uid(row));
+        int[] users = (int[]) invoke(manager, "getPackageInstalledUsers", TARGET);
+        for (int id : users) {
+            // User 0 is Super Clone's base package installation, not a clone tile.
+            // Creating intermediate virtual users can reinstall that base package
+            // for users whose clone records were deleted. Remove only these ghosts.
+            if (id == 0 || id == keep || records.contains(id)) continue;
+            if (!(Boolean) invoke(manager, "uninstallPackageAsUser", TARGET, id))
+                throw new IllegalStateException("Hidden target install cleanup failed: " + id);
+            if ((Boolean) invoke(manager, "isAppInstalledAsUser", id, TARGET))
+                throw new IllegalStateException("Hidden target install remains: " + id);
+        }
+    }
     static String create(Context ctx, int id, String day) throws Exception {
         for (Object model : targets(ctx))
             if (uid(model) == id) throw new IllegalStateException("ID already occupied: " + id);
@@ -144,6 +161,7 @@ public final class Bridge {
         boolean confirmed = false;
         for (Object row : targets(ctx)) if (uid(row) == id) confirmed = true;
         if (!confirmed) throw new IllegalStateException("Creation not confirmed in DB");
+        removeHiddenTargetInstalls(ctx, id);
         return "created id=" + id + " name=" + title;
     }
     public static synchronized String dispatch(String command) {

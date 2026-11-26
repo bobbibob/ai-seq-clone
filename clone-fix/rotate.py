@@ -112,14 +112,20 @@ def generation_busy():
 def launch(kind):
     env = dict(os.environ, HOME=str(HOME), PATH=TERMUX + ':/system/bin')
     python = TERMUX + '/python3'
-    # Recreate HomeActivity to discard tiles for a clone just deleted by rotation.
-    run(['/system/bin/input', 'keyevent', 'KEYCODE_WAKEUP'])
-    run(['/system/bin/wm', 'dismiss-keyguard'])
-    run(['/system/bin/am', 'start', '-W', '-f', '0x10008000', '-n',
-         'com.polestar.super.clone/com.polestar.superclone.component.activity.HomeActivity'])
-    run([python, str(HOME / 'launch-last.py')], env=env)
-    # Do not report success just because a tile was tapped: wait for the generator.
-    run([python, str(HOME / 'noa-ready.py'), kind], env=env)
+    power = run(['/system/bin/dumpsys', 'power'])
+    was_asleep = 'mWakefulness=Asleep' in power or 'mWakefulness=Dozing' in power
+    try:
+        # Recreate HomeActivity to discard tiles for a clone just deleted by rotation.
+        run(['/system/bin/input', 'keyevent', 'KEYCODE_WAKEUP'])
+        run(['/system/bin/wm', 'dismiss-keyguard'])
+        run(['/system/bin/am', 'start', '-W', '-f', '0x10008000', '-n',
+             'com.polestar.super.clone/com.polestar.superclone.component.activity.HomeActivity'])
+        run([python, str(HOME / 'launch-last.py')], env=env)
+        # Do not report success just because a tile was tapped: wait for the generator.
+        run([python, str(HOME / 'noa-ready.py'), kind], env=env)
+    finally:
+        if was_asleep:
+            run(['/system/bin/input', 'keyevent', 'KEYCODE_SLEEP'])
 
 
 def rotate(kind):
