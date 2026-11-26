@@ -18,6 +18,14 @@ DATA = Path('/data/adb/aiseq-v2')
 OLD_REGISTRY = Path('/data/adb/aiseq/registry')
 
 
+class GenerationActive(RuntimeError):
+    pass
+
+
+def rotation_enabled():
+    return (DATA / 'enabled').exists()
+
+
 def run(args, **kwargs):
     kwargs.setdefault('timeout', 180)
     result = subprocess.run(args, text=True, capture_output=True, **kwargs)
@@ -30,7 +38,14 @@ def run(args, **kwargs):
 
 
 def ctl(command):
+    unfreeze('com.polestar.super.clone:x')
     return run([CTL, *command.split()], timeout=150 if command.startswith('rotate ') else 25)
+
+
+def unfreeze(package):
+    result = subprocess.run(['/system/bin/pidof', package], capture_output=True, text=True)
+    for pid in result.stdout.split():
+        subprocess.run(['/system/bin/cmd', 'activity', 'unfreeze', pid], capture_output=True, timeout=5)
 
 
 def clones():
@@ -63,6 +78,7 @@ def quota(kind):
     active = [pid for pid in pids if int(Path('/proc', pid, 'oom_score_adj').read_text()) < 500]
     if len(active) != 1:
         raise RuntimeError('Cannot identify a single active generator process')
+    unfreeze('com.technosub.unlimitedaiimagen')
     raw = run([AI, 'request', '--pid', active[0]], input=json.dumps({'kind': kind, 'op': 'status'}), timeout=20)
     result = json.loads(raw)
     total = {'video': 10, 'edit': 2}[kind]
@@ -71,7 +87,7 @@ def quota(kind):
             or result.get('daily_max') != total or not 0 <= result['remaining'] <= total):
         raise RuntimeError('Invalid or unavailable quota; no clone operations')
     if result.get('generating') is True:
-        raise RuntimeError('Generation is active; rotation postponed')
+        raise GenerationActive('Generation is active; rotation postponed')
     return active[0], result['remaining'], total
 
 
@@ -88,6 +104,11 @@ def generation_busy():
 def launch(kind):
     env = dict(os.environ, HOME=str(HOME), PATH=TERMUX + ':/system/bin')
     python = TERMUX + '/python3'
+    # Recreate HomeActivity to discard tiles for a clone just deleted by rotation.
+    run(['/system/bin/input', 'keyevent', 'KEYCODE_WAKEUP'])
+    run(['/system/bin/wm', 'dismiss-keyguard'])
+    run(['/system/bin/am', 'start', '-W', '-f', '0x10008000', '-n',
+         'com.polestar.super.clone/com.polestar.superclone.component.activity.HomeActivity'])
     run([python, str(HOME / 'launch-last.py')], env=env)
     # Do not report success just because a tile was tapped: wait for the generator.
     run([python, str(HOME / 'noa-ready.py'), kind], env=env)
@@ -104,6 +125,14 @@ def rotate(kind):
         raise RuntimeError('Quota or active process changed; rotation postponed')
     if generation_busy():
         return 'Generation job started; postponed'
+    try:
+        quota('edit' if kind == 'video' else 'video')
+    except GenerationActive:
+        return 'Other generator is active; postponed'
+    except RuntimeError:
+        pass  # Only the visible route exposes a ViewModel in this app.
+    if not rotation_enabled():
+        return 'Disabled; no rotation'
     if ctl('capabilities') != 'persistent-daily-ids-v1 rotate-all-v1':
         raise RuntimeError('Installed bridge lacks durable IDs; no deletion attempted')
     day = datetime.date.today().isoformat()
@@ -136,6 +165,8 @@ def monitor(kind):
             reading = quota(selected)
             readings.append((selected, reading))
             print('%s remaining=%d/%d' % (selected, reading[1], reading[2]), flush=True)
+        except GenerationActive:
+            return 'Generator is active; postponed'
         except Exception as error:
             # A missing/uninitialized ViewModel is NOT a zero quota.
             print('%s quota unavailable: %s' % (selected, error), flush=True)
@@ -173,8 +204,14 @@ def main():
     DATA.mkdir(mode=0o700, parents=True, exist_ok=True)
     with (DATA / 'controller.lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        (DATA / 'controller.pid').write_text(str(os.getpid()))
         while True:
             try:
+                if not (DATA / 'enabled').exists():
+                    if not args.watch:
+                        return
+                    time.sleep(args.interval)
+                    continue
                 pending = DATA / 'pending-launch.json'
                 if pending.exists():
                     state = json.loads(pending.read_text())
@@ -184,9 +221,12 @@ def main():
                     pending.rename(DATA / 'last-successful-launch.json')
                     print('Pending clone launched; generator ready', flush=True)
                 else:
-                    print(monitor(args.kind), flush=True)
+                    message = monitor(args.kind)
+                    print(message, flush=True)
+                    (DATA / 'status.json').write_text(json.dumps({'message': message, 'updated': time.time()}))
             except Exception as error:
                 print('Stopped operation: ' + str(error), flush=True)
+                (DATA / 'status.json').write_text(json.dumps({'message': str(error), 'updated': time.time()}))
                 if not args.watch:
                     raise SystemExit(1)
             if not args.watch:

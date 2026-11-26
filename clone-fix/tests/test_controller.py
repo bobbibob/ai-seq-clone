@@ -30,6 +30,7 @@ class RotationGuardsTest(unittest.TestCase):
 
     def test_old_installed_bridge_never_receives_rotate(self):
         with patch.object(controller, 'generation_busy', return_value=False), \
+                patch.object(controller, 'rotation_enabled', return_value=True), \
                 patch.object(controller, 'quota', return_value=('123', 0, 10)), \
                 patch.object(controller.time, 'sleep'), patch.object(controller, 'ctl', return_value='ERROR unsupported command') as ctl:
             with self.assertRaisesRegex(RuntimeError, 'lacks durable IDs'):
@@ -62,6 +63,12 @@ class RotationGuardsTest(unittest.TestCase):
                 patch.object(controller, 'rotate', return_value='rotated') as rotate:
             self.assertEqual('rotated', controller.monitor('both'))
             rotate.assert_called_once_with('video')
+
+    def test_busy_other_mode_prevents_rotation(self):
+        with patch.object(controller, 'quota', side_effect=[controller.GenerationActive('busy'), ('123', 0, 2)]), \
+                patch.object(controller, 'rotate') as rotate:
+            self.assertEqual('Generator is active; postponed', controller.monitor('both'))
+            rotate.assert_not_called()
 
 
 if __name__ == '__main__':

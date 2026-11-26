@@ -19,6 +19,10 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - uses: actions/cache@v4
+        with:
+          path: signing/clone-control-debug.jks
+          key: clone-control-debug-signing-v1
       - name: Controller guard tests
         run: python3 -B -m unittest discover -s clone-fix/tests -p 'test_*.py' -v
       - name: Compile Java and exercise persistent journal
@@ -41,6 +45,26 @@ jobs:
           curl --fail --location --retry 3 \
             https://raw.githubusercontent.com/topjohnwu/zygisk-module-sample/8ce26128f81baaed0b969aaf7f52f886b61af4ab/module/jni/zygisk.hpp \
             -o build/zygisk.hpp
+      - name: Build notification control APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          PLATFORM="$SDK/platforms/android-35/android.jar"
+          BT="$SDK/build-tools/35.0.0"
+          mkdir -p build/appclasses build/appdex signing
+          javac -source 8 -target 8 -classpath "$PLATFORM" -d build/appclasses clone-fix/notification/src/com/noa/clonecontrol/*.java
+          "$BT/d8" --min-api 26 --lib "$PLATFORM" --output build/appdex build/appclasses/com/noa/clonecontrol/*.class
+          "$BT/aapt2" link -I "$PLATFORM" --manifest clone-fix/notification/AndroidManifest.xml -o build/control-unsigned.apk
+          zip -j build/control-unsigned.apk build/appdex/classes.dex
+          "$BT/zipalign" -f 4 build/control-unsigned.apk build/control-aligned.apk
+          if [ ! -f signing/clone-control-debug.jks ]; then
+            keytool -genkeypair -keystore signing/clone-control-debug.jks -storepass android -keypass android \
+              -alias androiddebugkey -dname 'CN=Android Debug,O=Android,C=US' -keyalg RSA -keysize 2048 -validity 10000
+          fi
+          "$BT/apksigner" sign --ks signing/clone-control-debug.jks --ks-pass pass:android \
+            --out build/clone-control.apk build/control-aligned.apk
+          "$BT/apksigner" verify --verbose build/clone-control.apk
       - name: Build ARM64 transport
         shell: bash
         run: |
@@ -63,7 +87,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p build/module/zygisk build/module/bin build/artifacts
-          cp clone-fix/module.prop clone-fix/customize.sh clone-fix/service.sh build/module/
+          cp clone-fix/module.prop clone-fix/customize.sh clone-fix/service.sh clone-fix/control.sh build/module/
           cp clone-fix/README.md build/module/README.md
           cp clone-fix/rotate.py build/module/rotate.py
           cp build/arm64-v8a.so build/module/zygisk/arm64-v8a.so
@@ -72,8 +96,9 @@ jobs:
           touch build/module/disable
           (cd build/module && zip -r ../artifacts/noa-clone-ids-candidate.zip .)
           cp build/dependencies.txt build/artifacts/
+          cp build/clone-control.apk build/artifacts/
           git rev-parse HEAD > build/artifacts/SOURCE_COMMIT.txt
-          (cd build/artifacts && sha256sum noa-clone-ids-candidate.zip > SHA256SUMS)
+          (cd build/artifacts && sha256sum noa-clone-ids-candidate.zip clone-control.apk > SHA256SUMS)
           unzip -t build/artifacts/noa-clone-ids-candidate.zip
       - uses: actions/upload-artifact@v4
         with:
