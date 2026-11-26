@@ -60,7 +60,8 @@ public final class DailyIds {
             }
             // On first migration seed from BOTH live clones and historical root registry.
             // On a new date start a fresh daily sequence. Retain previous dates for clock rollback.
-            int last = used.getOrDefault(day, exists ? -1 : bootstrapHighWater);
+            // Virtual user 0 is the base install; daily clone numbering starts at 1.
+            int last = used.getOrDefault(day, exists ? 0 : Math.max(0, bootstrapHighWater));
             int next = last + 1;
             while (occupied.contains(next)) next++;
             if (next > MAX_ID) throw new IOException("Daily internal ID space exhausted (0..254); no reuse");

@@ -40,7 +40,8 @@ observed high-water mark of 23, the next internal ID is 24. Later clone deletion
 cannot reset the journal. Failed creation attempts consume reservations, so
 some IDs can be skipped rather than reused.
 
-The numeric sequence starts over for a new local calendar date. Prior dates
+The numeric sequence starts over at 1 for a new local calendar date; user 0 is
+the virtual base installation and is not allocated as a clone. Prior dates
 are retained to prevent duplicates when the clock moves back. A calendar-day
 reset is not a rolling 24-hour uniqueness guarantee. The recovered adapter
 supports IDs 0..254; exhaustion fails before deletion rather than recycling IDs.

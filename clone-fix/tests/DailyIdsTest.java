@@ -22,10 +22,10 @@ public final class DailyIdsTest {
         expect(25, new DailyIds(journal).reserve("2026-11-26", -1, EMPTY));
         // Failed creation already consumed 25; retry must use 26.
         expect(26, ids.reserve("2026-11-26", -1, EMPTY));
-        expect(0, ids.reserve("2026-11-27", -1, EMPTY));
         expect(1, ids.reserve("2026-11-27", -1, EMPTY));
+        expect(2, ids.reserve("2026-11-27", -1, EMPTY));
         expect(27, ids.reserve("2026-11-26", -1, EMPTY)); // clock rollback
-        expect(3, ids.reserve("2026-11-27", -1, new HashSet<>(Arrays.asList(2))));
+        expect(4, ids.reserve("2026-11-27", -1, new HashSet<>(Arrays.asList(3))));
         ExecutorService pool = Executors.newFixedThreadPool(8);
         Set<Integer> results = new HashSet<>();
         List<Future<Integer>> tasks = new ArrayList<>();
