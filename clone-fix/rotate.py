@@ -48,6 +48,14 @@ def unfreeze(package):
         subprocess.run(['/system/bin/cmd', 'activity', 'unfreeze', pid], capture_output=True, timeout=5)
 
 
+def ensure_host():
+    result = subprocess.run(['/system/bin/pidof', 'com.polestar.super.clone:x'], capture_output=True)
+    if result.returncode != 0:
+        run(['/system/bin/am', 'start', '-W', '-n',
+             'com.polestar.super.clone/com.polestar.superclone.component.activity.HomeActivity'])
+        time.sleep(5)
+
+
 def clones():
     output = ctl('list')
     if output == 'none':
@@ -215,10 +223,12 @@ def main():
                     time.sleep(args.interval)
                     continue
                 if resume_pending:
-                    resume_pending = False
                     running = subprocess.run(['/system/bin/pidof', 'com.technosub.unlimitedaiimagen'], capture_output=True)
-                    if running.returncode != 0 and len(clones()) == 1:
-                        launch('video')
+                    if running.returncode != 0:
+                        ensure_host()
+                        if len(clones()) == 1:
+                            launch('video')
+                    resume_pending = False
                 pending = DATA / 'pending-launch.json'
                 if pending.exists():
                     state = json.loads(pending.read_text())
