@@ -103,6 +103,19 @@ public final class Bridge {
         return "id=" + id + " db=" + (count == 1) + " installed=" + installed
                 + " users=" + Arrays.toString((int[]) usersValue);
     }
+    static void ensureVirtualUser(int id) throws Exception {
+        Object userManager = invoke(cls("org.vh4"), "a");
+        Object service = get(userManager, "a");
+        if (service == null) throw new IllegalStateException("Virtual user manager unavailable");
+        // Super Clone's helper creates ONE lowest-free user, not necessarily the
+        // requested ID. Fill missing user metadata before asking it to install.
+        for (int attempt = 0; attempt <= DailyIds.MAX_ID; attempt++) {
+            if (invoke(service, "getUserInfo", id) != null) return;
+            if (invoke(service, "createUser", "NOA reserved user", 2) == null)
+                throw new IllegalStateException("Cannot allocate virtual user " + id);
+        }
+        throw new IllegalStateException("Virtual user allocation did not reach " + id);
+    }
     static String create(Context ctx, int id, String day) throws Exception {
         for (Object model : targets(ctx))
             if (uid(model) == id) throw new IllegalStateException("ID already occupied: " + id);
@@ -160,6 +173,7 @@ public final class Bridge {
                 String day = LocalDate.now().toString();
                 DailyIds ids = new DailyIds(new File(ctx.getNoBackupFilesDir(), "noa-daily-ids/journal"));
                 int reserved = ids.reserve(day, floor, occupied);
+                ensureVirtualUser(reserved);
                 // Durable reservation is complete BEFORE any clone is deleted.
                 if (rotate) {
                     for (Object model : models) delete(ctx, model);
