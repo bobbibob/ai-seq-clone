@@ -106,7 +106,16 @@ def generation_busy():
         capture_output=True, text=True)
     if result.returncode not in (0, 1):
         raise RuntimeError('Cannot check active generation jobs')
-    return result.returncode == 0
+    if result.returncode == 1:
+        return False
+    for pid in result.stdout.split():
+        try:
+            status = Path('/proc', pid, 'stat').read_text().rsplit(')', 1)[1].split()[0]
+            if status not in ('T', 't', 'Z'):
+                return True
+        except FileNotFoundError:
+            continue
+    return False
 
 
 def launch(kind):
